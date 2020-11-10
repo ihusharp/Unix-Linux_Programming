@@ -1,3 +1,6 @@
+/*
+添加键入字符立即响应程序
+*/
 #include<stdio.h>
 #include<stdlib.h>
 

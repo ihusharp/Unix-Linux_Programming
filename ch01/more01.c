@@ -15,7 +15,8 @@ int main(int argc, char* argv[])
 {
     FILE* fp;
 
-    if(argc == 1) {
+    if(argc == 1) {// 如果没有参数， 那便从标准输入中读入
+                    // eg  who | more 将 who 重定向到 more 的输入中 
         do_more(stdin);
     } else {
         while(--argc) {
@@ -34,25 +35,26 @@ int main(int argc, char* argv[])
 void do_more(FILE* fp)
 {
     char line[LINELEN];
-    int num_of_lines = 0, reply;
-    int see_more();
+    int num_of_lines = 0;
+    int see_more(), reply;// 声明
 
-    // 不断读入
-    while (fgets(line, LINELEN, fp)) {
+    while(fgets(line, LINELEN, fp)) {
         if(num_of_lines == PAGELEN) {
-            reply = see_more();// ask 
-            if(reply == 0) {
+            reply = see_more();
+            if(reply == 0) {// 说明为 q
                 break;
             }
-            num_of_lines -= reply;// reset cnt
+            num_of_lines -= reply;// 以通过 while 向下继续读取 line
         }
         if(fputs(line, stdout) == EOF) {
             exit(EXIT_FAILURE);
         }
-        num_of_lines++;
+        num_of_lines++;// 计数
     }
+
 }
 
+// 读取 输入字符， 返回下移行数
 int see_more()
 {
     // response 分为三种情况
@@ -68,10 +70,10 @@ int see_more()
         if (c == 'q') {
             return 0;
         }
-        if (c == ' ') {
+        if (c == ' ') {// 空格为 1 面 即 为行 
             return PAGELEN;
         }
-        if (c == 'q') {
+        if (c == '\n') {// 回车为 1 行
             return 1;
         }
     }
