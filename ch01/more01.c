@@ -16,7 +16,7 @@ int main(int argc, char* argv[])
     FILE* fp;
 
     if(argc == 1) {// 如果没有参数， 那便从标准输入中读入
-                    // eg  who | more 将 who 重定向到 more 的输入中 
+                    // eg  who | more 将 who 重定向到 more 的输入中 (采用管道)
         do_more(stdin);
     } else {
         while(--argc) {
@@ -39,6 +39,7 @@ void do_more(FILE* fp)
     int see_more(), reply;// 声明
 
     while(fgets(line, LINELEN, fp)) {
+        // 当已经到 24 行了
         if(num_of_lines == PAGELEN) {
             reply = see_more();
             if(reply == 0) {// 说明为 q
@@ -46,7 +47,7 @@ void do_more(FILE* fp)
             }
             num_of_lines -= reply;// 以通过 while 向下继续读取 line
         }
-        if(fputs(line, stdout) == EOF) {
+        if(fputs(line, stdout) == EOF) {// 进行输出
             exit(EXIT_FAILURE);
         }
         num_of_lines++;// 计数
