@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <time.h>
 #include "utmplib.c"
+#include <error.h>
+#include<errno.h>
 
 #define SHOWHOST    // include remote machine on output
 void show_time(long time) ;
