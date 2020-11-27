@@ -41,7 +41,7 @@ struct dirent {
 
 
 
-## 2、ls 扩展研究
+## 2、ls02
 
 ### ls -l
 
@@ -249,7 +249,193 @@ char *gid_to_name( gid_t gid) {
 }
 ```
 
-综合可得具体函数见 ls02.c
+### 综合可得具体函数见 ls02.c
+
+其中 uid_to_name 为了健壮性， 进行扩展：
+
+因为可能 uid 为 NULL，此时需要返回输出 uid
+
+gid_to_name 同理
+
+```c
+// 为了健壮性， 进行扩展
+char* uid_to_name(uid_t uid)
+{
+    struct passwd* pwd = getpwuid(uid); // 获取 struct
+
+    static char str[11];
+    if (pwd == NULL) {
+        // sprintf()函数用于将格式化的数据写入字符串
+        sprintf(str, "%d", uid);
+        return str;
+    } else {
+        return pwd->pw_name;
+    }
+}
+
+```
+
+
+
+### 现在问题：
+
+1、没有 按照文件名排序输出
+
+2、没有显示记录总数
+
+3、ls /tmp 显示错误，不能显示指定目录的信息
+
+
+
+
+
+## 3、三个特殊的位
+
+![image-20201127170133305](/home/husharp/CS/Unix-Linux/Unix&Linux_Programming/ch03/think.assets/image-20201127170133305.png)
+
+suid、sgid、sticky
+
+```c
+#define	__S_ISUID	04000	/* Set user ID on execution.  */
+#define	__S_ISGID	02000	/* Set group ID on execution.  */
+#define	__S_ISVTX	01000	/* Save swapped text after use (sticky).  */
+```
+
+### suid、sgid：
+
+#### eg 修改密码 passwd
+
+passwd 是怎么修改——只有 root 权限才能修改文件 /etc/passwd 的呢？
+
+```shell
+husharp@hjh-Ubuntu:~/CS/Unix-Linux/Unix&Linux_Programming$ ls -l /etc/passwd
+-rw-r--r-- 1 root root 2496 9月  21 22:01 /etc/passwd
+husharp@hjh-Ubuntu:~/CS/Unix-Linux/Unix&Linux_Programming$ ls -l /usr/bin/passwd 
+-rwsr-xr-x 1 root root 59640 3月  23  2019 /usr/bin/passwd
+```
+
+我们发现，位于 /etc/passwd 的文件 passwd 没有 s 位，只有 root 才能进行更改。而位于 /usr/bin/passwd  的 passwd 的命令具有 s 位，运行该程序（即 passwd）命令对 /etc/passwd 进行操作时，认为是由 /etc/passwd 文件所有者在运行该程序，因此能够修改 /etc/passwd 中的内容。
+
+当然不能修改其他人的文件，因为 passwd 命令会通过 getuid 知道此时是谁在运行这个程序，只能修改该用户 ID 所对应的密码。
+
+**sgid 与 suid 相似**
+
+**sticky ：**
+
+1、对于文件：用于早期的 swap 分区，告诉内核即使没有人在使用程序，也要放在 swap（就像 “粘”sticky 在 swap一样）。
+
+2、对于目录：使目录里的文件只能被删除者删除，如 /tmp 谁都可以删除。
+
+
+
+### 补充
+
+现在说明为什么每个文件有 12 个属性，但是只显示 9 个字符?
+
+![image-20201127204159990](/home/husharp/CS/Unix-Linux/Unix&Linux_Programming/ch03/think.assets/image-20201127204159990.png)
+
+
+
+
+
+## 4、设置和修改文件属性
+
+### 1、文件属性
+
+创建文件时建立（比如 reg 采用 creat ），不能修改。
+
+### 2、许可位与特殊属性位
+
+1.建立：通过 fd= creat("newfile", 0744);  -> umask(0744)【调用内核函数】
+
+2.修改：
+
+```c
+chmod("/tmp/file1", 04764);
+chmod("/tmp/file1", S_ISUID | ...| S_IROTH);
+```
+
+3.Shell 进行修改：
+
+Shell 命令 chmod 可以通过 八进制模式和 符号模式。
+
+### 3、链接数
+
+link 和 unlink（改变别名数量）
+
+### 4、文件所有者与组
+
+chown 修改文件所有者和组
+
+```
+chown("file1", 200, 40);	// 用户 ID 为 200， 组 ID 为 40
+```
+
+Shell 命令 chown 和 chrgp 
+
+### 5、文件大小
+
+占用存储空间的字节大小。
+
+向文件增加内容时，会自动增加，没有直接减少文件占用空间的函数（除了 creat 直接置为 0）。
+
+### 6、时间
+
+最后修改时间，最后访问时间，属性最后修改时间。
+
+utime函数修改最后修改时间，最后访问时间。
+
+utime 函数采用以下这个存放两个时间的结构体
+
+```c
+struct utimbuf
+  {
+    __time_t actime;		/* Access time.  */
+    __time_t modtime;		/* Modification time.  */
+  };
+```
+
+Shell 可以通过 touch 进行修改。
+
+### 7、文件名
+
+creat 建立文件名
+
+rename 修改文件名
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
