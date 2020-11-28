@@ -8,4 +8,7 @@ code implement by reading understanding-unix-programming
 - [x] more
 - [x] who
 - [x] cp
-- [ ] ls
+- [x] ls
+- [x] pwd
+- [ ] stty
+
