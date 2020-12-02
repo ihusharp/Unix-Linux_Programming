@@ -55,6 +55,12 @@ DESCRIPTION
 
 ```
 
+内核首先找到 inode 节点，对其类型进行判断
+
+- 如果文件是磁盘文件，那么内核通过访问块分配表来读取数据
+- 如果是设备文件，那么内核通过调用驱动程序的 write 部分进行写入
+- 其他操作，lseek、read、close 等也都是类似
+
 
 
 ## 磁盘连接属性
@@ -173,23 +179,4 @@ husharp@hjh-Ubuntu:~/CS/Unix-Linux/Unix&Linux_Programming/ch05$ ./echostate
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+​                                                                                                         
