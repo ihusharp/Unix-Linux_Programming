@@ -1,4 +1,4 @@
-
+# 终端控制和信号
 
 **ctype.h**是[C标准函数库](https://baike.baidu.com/item/C标准函数库)中的[头文件](https://baike.baidu.com/item/头文件)，定义了一批[C语言](https://baike.baidu.com/item/C语言)字符分类函数（C character classification functions），用于测试字符是否属于特定的字符类别，如字母字符、控制字符等等。既支持单字节字符，也支持[宽字符](https://baike.baidu.com/item/宽字符)。
 
@@ -499,66 +499,200 @@ int tty_mode(int how) {
 
 至此便能直接退出了。
 
+> **现在如果有人对所有信号都采用忽略会怎么办呢？**
+>
+> **当信号发生时，忽略信号几乎适用于所有的信号，不过有两个信号除外，SIGSTOP和SIGKILL。**
 
 
 
 
 
+## 信号源码探究 POSIX 模型
 
+继续之前的信号
 
+信号处理函数
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 进程间通信
-
-## 管道模型
-
-
-
-管道分为两种类型：匿名管道、命名管道
-
-“|” 表示的管道称为**匿名管道**，意思就是这个类型的管道没有名字，用完了就销毁了。就像上面那个命令里面的一样，竖线代表的管道随着命令的执行自动创建、自动销毁。用户甚至都不知道自己在用管道这种技术，就已经解决了问题。所以这也是面试题里面经常会问的，到时候千万别说这是竖线，而要回答背后的机制，管道。
-
-另外一种类型是**命名管道**。这个类型的管道需要通过 mkfifo 命令显式地创建。
-
-```shell
-mkfifo hello
+```c
+typedef void (*sighandler_t)(int);
+sighandler_t signal(int signum, sighandler_t handler);
 ```
 
-hello 就是这个管道的名称。管道以文件的形式存在，这也符合 Linux 里面一切皆文件的原则。这个时候，我们 ls 一下，可以看到，这个文件的类型是 p，就是 pipe 的意思。
+ Linux 下面执行 man signal 的话，会发现 Linux 不建议我们直接用这个方法，而是改用 sigaction。定义如下：
 
-```
-prw-r--r-- 1 husharp husharp   0 12月  1 18:07 hello
-```
-
-我们可以往管道里面写入东西。例如，写入一个字符串。
-
+```c
+int sigaction(int signum, const struct sigaction *act,
+                     struct sigaction *oldact);
 ```
 
+![image-20201202135555277](./README.assets/image-20201202135555277.png)
+
+#### 1、定制信号处理 sigaction
+
+在过去，面对信号的处理只有简单的几种选择：SIG_DFL、SIG_IGN、或者函数处理
+
+这两者的区别在哪里呢？其实它还是将信号和一个动作进行关联，只不过这个动作由一个结构 struct sigaction 表示了。
+
+```c
+struct sigaction {
+	 /* 下面两个选择一个*/
+	__sighandler_t sa_handler; /* SIG_DFL、SIG_IGN、或者函数处理*/
+	void (*sa_sigaction) (int, siginfo_t *, void *);	/* new handler  */
+		
+	unsigned long sa_flags;
+	__sigrestore_t sa_restorer;
+	sigset_t sa_mask;		/* mask last for extensibility */
+};
+```
+
+1.选择老的 sa_handler 还是 sa_sigaction？( sa_flags 的 SA_SIGNINFO 位)
+
+其他成员变量可以让你更加细致地控制信号处理的行为。而 signal 函数没有给你机会设置这些。
+
+![image-20201202140307943](./README.assets/image-20201202140307943.png)
+
+> 这里需要注意的是，**signal 不是系统调用，而是 glibc 封装的一个函数。**
+
+2.sa_flags 位
+
+sa_flags 通过设置一些位，来控制处理函数应对多个信号情况
+
+以下为部分列表：
+
+![image-20201202140727549](./README.assets/image-20201202140727549.png)
+
+比如对于
+
+我们知道，信号的到来时间是不可预期的，有可能程序正在调用某个漫长的系统调用的时候（你可以在一台 Linux 机器上运行 man 7  signal 命令，在这里找 Interruption of system calls and library functions by  signal handlers  的部分，里面说的非常详细），这个时候一个信号来了，会中断这个系统调用，去执行信号处理函数，那执行完了以后呢？系统调用怎么办呢？
+
+这时候有两种处理方法，
+
+- 一种就是 SA_INTERRUPT，（直接忽略）
+
+  也即系统调用被中断了，就不再重试这个系统调用了，而是直接返回一个 -EINTR  常量，告诉调用方，这个系统调用被信号中断了，但是怎么处理你看着办。如果是这样的话，调用方可以根据自己的逻辑，重新调用或者直接返回，这会使得我们的代码非常复杂，在所有系统调用的返回值判断里面，都要特殊判断一下这个值。
+
+- 另外一种处理方法是 SA_RESTART。
+
+  这个时候系统调用会被自动重新启动，不需要调用方自己写代码。当然也可能存在问题，例如从终端读入一个字符，这个时候用户在终端输入一个`'a'`字符，在处理`'a'`字符的时候被信号中断了，等信号处理完毕，再次读入一个字符的时候，如果用户不再输入，就停在那里了，需要用户再次输入同一个字符。
+
+**3.sa_mask 位**
+
+sa_mask 中的位决定哪些信号要被阻塞。比如在火灾电话来临时，阻塞其他的售货电话。
+
+### demo 实验
+
+```c
+int main(int argc, char** argv) {
+    struct sigaction newHandler;    // new setting
+    sigset_t blocked;      // 将一部分阻塞
+    char x[INPUTLEN];
+
+/*
+struct sigaction {
+	 // 下面两个选择一个
+	__sighandler_t sa_handler; // SIG_DFL、SIG_IGN、或者函数处理
+	void (*sa_sigaction) (int, siginfo_t *, void *);	// new handler 
+		
+	unsigned long sa_flags;
+	__sigrestore_t sa_restorer;
+	sigset_t sa_mask;		// mask last for extensibility
+};
+*/
+    /* load these two members first */  
+    newHandler.sa_handler = intHandler;
+    // 设置为 捕鼠器模式 + 被中断的系统调用会被自动重新启动
+    // 捕鼠器模式指：当再次调用 Ctrl + C 时不会再起作用（只会处理用一次）
+    // newHandler.sa_flags = SA_RESETHAND | SA_RESTART;//捕鼠器模式 + 被中断的系统调用会被自动重新启动
+    newHandler.sa_flags = SA_RESTART;// 被中断的系统调用会被自动重新启动
+
+    /* then build the list of blocked signals */
+    sigemptyset(&blocked); /* clear all bits      */
+    // sigaddset()用来将参数signum 代表的信号加入至参数set 信号集里.
+    // 信号集表示哪些要被阻塞，此处便是指 Ctrl+\ 被 Ctrl+C 阻塞
+    sigaddset(&blocked, SIGQUIT);/* add SIGQUIT to list */
+
+    newHandler.sa_mask = blocked;// 置为 设置的模式
+
+    if(sigaction(SIGINT, &newHandler, NULL) == -1) {
+        perror("sigaction");
+    } else {
+        while(1) {
+            fgets(x, INPUTLEN, stdin);
+            printf("input: %s", x);
+        }
+    }
+
+}
+
+void intHandler(int s) {
+    printf("Called with signal %d\n", s);
+    sleep(2);
+    printf("done handling signal %d\n", s);
+}
+```
+
+通过设置 sa_flags 的模式来查看
+
+发现
+
+- `newHandler.sa_flags = SA_RESETHAND | SA_RESTART;`
+
+  捕鼠器模式 + 被中断的系统调用会被自动重新启动
+
+  此时 捕鼠器模式表示：当再次调用 Ctrl + C 时不会再起作用（只会处理用一次）
+
+  即：按两下 Ctrl + C时，第一次信号捕获处理，第二次会使程序终止
+
+-  `newHandler.sa_flags = SA_RESTART;`
+
+   被中断的系统调用会被自动重新启动
+
+  此时可以捕获所有的 Ctrl + C
+
+  且由于是 SA_RESTART（Quit 位于信号集中） ——因此，Ctrl + C 被捕获时，若按下 Ctrl + \ 此时 不能立即退出，会被阻塞。
+
+
+
+
+
+
+
+### 内核流程
+
+- 在用户程序里面，有两个函数可以调用，一个是 signal，一个是 sigaction，推荐使用 sigaction。
+- 用户程序调用的是 Glibc 里面的函数，signal 调用的是 __ sysv_signal，里面默认设置了一些参数，使得 signal 的功能受到了限制，sigaction 调用的是 __sigaction，参数用户可以任意设定。
+- 无论是 __ sysv_signal 还是 __sigaction，调用的都是统一的一个系统调用 rt_sigaction。
+- 在内核中，rt_sigaction 调用的是 do_sigaction 设置信号处理函数。**在每一个进程的 task_struct  里面，都有一个 sighand 指向 struct sighand_struct，里面是一个数组，下标是信号，里面的内容是信号处理函数。**
+
+![image-20201202130850557](README.assets/image-20201202130850557.png)
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```
+/\* Values for the HOW argument to `sigprocmask'.  \*/*
+
+*#define* SIG_BLOCK     0    */\* Block signals.  \*/*
+
+*#define* SIG_UNBLOCK   1    */\* Unblock signals.  \*/*
+
+*#define* SIG_SETMASK   2    */\* Set the set of blocked signals.  \*/*
+```
+
+## kill
+
+一个进程可以通过 kill 系统调用向另一个进程发送信号
+
+![image-20201202150702905](./README.assets/image-20201202150702905.png)
 
 
 
