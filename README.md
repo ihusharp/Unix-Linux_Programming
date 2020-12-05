@@ -10,5 +10,10 @@ code implement by reading understanding-unix-programming
 - [x] cp
 - [x] ls
 - [x] pwd
-- [ ] stty
+- [x] stty
+- [x] signal
+- [x] wait
+- [x] pipe
+- [x] select
+- [ ] 
 
